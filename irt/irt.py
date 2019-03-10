@@ -5,6 +5,8 @@ from scipy.optimize import minimize
 from scipy.stats import norm, halfnorm
 from scipy.special import expit
 
+__all__ = ['two_parameter_model', 'four_parameter_model', 'estimate_thetas']
+
 def scale_guessing(value, c, d):
     return c + (d - c) * value
 
