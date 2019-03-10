@@ -1,17 +1,15 @@
-from __future__ import print_function
-
 from builtins import range
 from numpy import abs, array, concatenate, copy, exp, log, max, sort
 from numpy.random import normal, uniform
-import scipy.optimize
-import scipy.stats
-import scipy.special
+from scipy.optimize import minimize
+from scipy.stats import norm, halfnorm
+from scipy.special import expit
 
 def scale_guessing(value, c, d):
     return c + (d - c) * value
 
 def two_parameter_model(a, b, theta):
-    return scipy.special.expit(a * theta + b)
+    return expit(a * theta + b)
 
 def four_parameter_model(a, b, c, d, theta):
     return scale_guessing(two_parameter_model(a, b, theta), c, d)
@@ -19,7 +17,7 @@ def four_parameter_model(a, b, c, d, theta):
 def learn_theta(abcds, corrects):
     def f(theta):
         theta = theta[0]
-        mult = -scipy.stats.norm(0, 1).pdf(theta)
+        mult = -norm(0, 1).pdf(theta)
         for abcd, correct in zip(abcds, corrects):
             a,b,c,d = abcd
             if correct != 0:
@@ -33,10 +31,10 @@ def learn_abcd(thetas, corrects):
         a, b, c, d = arg
         if a <= 0:
             return 0
-        mult = -scipy.stats.norm(0, 1).pdf(log(a))
-        mult *= scipy.stats.norm(0, 1).pdf(b)
-        mult *= scipy.stats.halfnorm(0, 0.1).pdf(c)
-        mult *= scipy.stats.halfnorm(0, 0.1).pdf(1 - d)
+        mult = -norm(0, 1).pdf(log(a))
+        mult *= norm(0, 1).pdf(b)
+        mult *= halfnorm(0, 0.1).pdf(c)
+        mult *= halfnorm(0, 0.1).pdf(1 - d)
         for theta, correct in zip(thetas, corrects):
             p = four_parameter_model(a, b, c, d, theta)
             mult *= 1 + (2 * p - 1) * correct
@@ -64,7 +62,7 @@ def expanded_scores(score_matrix):
 
 def parse_optimization_result(res):
     if not res['success'] and res['message'] != 'Maximum number of iterations has been exceeded.':
-        raise ValueError("Optimization failed:\n" + repr(res))
+        raise RuntimeError("Optimization failed:\n" + repr(res))
     return res['x']
 
 def initialize_random_values(students_count, subquestions_count):
@@ -77,7 +75,7 @@ def initialize_random_values(students_count, subquestions_count):
 
 def student_theta_given_abcd(abcds, scores, inital_theta):
     to_minimize = learn_theta(abcds, scores)
-    res = scipy.optimize.minimize(to_minimize, [inital_theta], method = 'Nelder-Mead', options = {'maxiter': 2000})
+    res = minimize(to_minimize, [inital_theta], method = 'Nelder-Mead')
     return parse_optimization_result(res)
 
 def all_thetas_given_abcd(abcds, scores, thetas):
@@ -86,14 +84,14 @@ def all_thetas_given_abcd(abcds, scores, thetas):
 
 def question_abcd_given_theta(thetas, scores, initial_abcd):
     to_minimize = learn_abcd(thetas, scores)
-    res = scipy.optimize.minimize(to_minimize, initial_abcd, method = 'Nelder-Mead', options = {'maxiter': 2000})
+    res = minimize(to_minimize, initial_abcd, method = 'Nelder-Mead')
     return parse_optimization_result(res)
 
 def all_abcds_given_theta(thetas, scores, abcds):
     return array([question_abcd_given_theta(thetas, scores[i], abcds[i])
                   for i in range(len(abcds))])
 
-def estimate_thetas(scores, print_freq = None):
+def estimate_thetas(scores):
     # Even though we usually input the table as scores per student,
     # the analysis is easier for a table of scores per question:
     scores = scores.T
@@ -122,7 +120,5 @@ def estimate_thetas(scores, print_freq = None):
         
         old_abcds, old_thetas = copy(abcds), copy(thetas)
         iter_count += 1
-        if print_freq and not (iter_count % print_freq):
-            print(iter_count, diff)
         
     return thetas, abcds
