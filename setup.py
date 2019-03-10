@@ -14,7 +14,7 @@ setup(
     long_description = long_description,
     long_description_content_type = 'text/markdown',
     url = 'https://github.com/aimir/irt',
-    authon = 'Amir Sarid',
+    author = 'Amir Sarid',
     keywords = 'IRT item response theory psychometrics',
     packages = ['irt'],
     install_requires = ['numpy', 'scipy'],
