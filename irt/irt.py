@@ -1,11 +1,9 @@
 from builtins import range
-from numpy import abs, array, concatenate, copy, exp, log, max, sort
+from numpy import abs, array, concatenate, copy, exp, inf, log, log1p, max, sort
 from numpy.random import normal, uniform
 from scipy.optimize import minimize
 from scipy.stats import norm, halfnorm
 from scipy.special import expit
-
-__all__ = ['two_parameter_model', 'four_parameter_model', 'estimate_thetas']
 
 def scale_guessing(value, c, d):
     return c + (d - c) * value
@@ -19,28 +17,28 @@ def four_parameter_model(a, b, c, d, theta):
 def learn_theta(abcds, corrects):
     def f(theta):
         theta = theta[0]
-        mult = -norm(0, 1).pdf(theta)
+        mult = log(norm(0, 1).pdf(theta))
         for abcd, correct in zip(abcds, corrects):
             a,b,c,d = abcd
             if correct != 0:
                 p = four_parameter_model(a, b, c, d, theta)
-                mult *= 1 + (2 * p - 1) * correct
-        return mult
+                mult += log1p((2 * p - 1) * correct)
+        return -mult
     return f
 
 def learn_abcd(thetas, corrects):
     def f(arg):
         a, b, c, d = arg
-        if a <= 0:
-            return 0
-        mult = -norm(0, 1).pdf(log(a))
-        mult *= norm(0, 1).pdf(b)
-        mult *= halfnorm(0, 0.1).pdf(c)
-        mult *= halfnorm(0, 0.1).pdf(1 - d)
+        if a <= 0 or c < 0 or d > 1 or d - c < 0:
+            return inf
+        mult = log(norm(0, 1).pdf(log(a)))
+        mult += log(norm(0, 1).pdf(b))
+        mult += log(halfnorm(0, 0.1).pdf(c))
+        mult += log(halfnorm(0, 0.1).pdf(1 - d))
         for theta, correct in zip(thetas, corrects):
             p = four_parameter_model(a, b, c, d, theta)
-            mult *= 1 + (2 * p - 1) * correct
-        return mult
+            mult += log1p((2 * p - 1) * correct)
+        return -mult
     return f
 
 def expanded_scores(score_matrix):
@@ -63,7 +61,8 @@ def expanded_scores(score_matrix):
     return concatenate(subscores)
 
 def parse_optimization_result(res):
-    if not res['success'] and res['message'] != 'Maximum number of iterations has been exceeded.':
+    if not res['success'] and res['message'] not in ['Maximum number of iterations has been exceeded.',
+                                                     'Maximum number of function evaluations has been exceeded.']:
         raise RuntimeError("Optimization failed:\n" + repr(res))
     return res['x']
 
@@ -122,5 +121,5 @@ def estimate_thetas(scores):
         
         old_abcds, old_thetas = copy(abcds), copy(thetas)
         iter_count += 1
-        
+
     return thetas, abcds
