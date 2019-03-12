@@ -1,9 +1,8 @@
 from builtins import range
 from numpy import (abs, array, concatenate, copy, exp, inf, log, log1p, max,
-                   sort)
-from numpy.random import normal, uniform
+                   newaxis, sort, sum)
 from scipy.optimize import minimize
-from scipy.stats import norm, halfnorm
+from scipy.stats import dirichlet, lognorm, norm
 from scipy.special import expit
 
 __all__ = ['two_parameter_model', 'four_parameter_model', 'estimate_thetas']
@@ -25,10 +24,41 @@ def four_parameter_model(a, b, c, d, theta):
     return scale_guessing(two_parameter_model(a, b, theta), c, d)
 
 
-def learn_theta(abcds, corrects):
+class StudentParametersDistribution(object):
+    def __init__(self, theta_scale=1.):
+        self.theta = norm(loc=0., scale=theta_scale)
+
+    def rvs(self, size=None):
+        return self.theta.rvs(size)
+
+    def logpdf(self, theta):
+        return self.theta.logpdf(theta)
+
+
+class QuestionParametersDistribution(object):
+    def __init__(self, a_scale=1.7, b_scale=1., c_d_dirichlet_alpha=(1,1,46)):
+        self.a = lognorm(s=1., scale=a_scale)
+        self.b = norm(scale=b_scale)
+        self.c_d = dirichlet(alpha=c_d_dirichlet_alpha)
+
+    def rvs(self, size=None):
+        a = self.a.rvs(size)
+        b = self.b.rvs(size)
+        c_d = self.c_d.rvs(size)
+        c = c_d[..., 0]
+        d = 1 - c_d[..., 1]
+        return concatenate((a[..., newaxis], b[..., newaxis],
+                            c[..., newaxis], d[..., newaxis]), axis=-1)
+
+    def logpdf(self, a, b, c, d):
+        return (self.a.logpdf(a) + self.b.logpdf(b) +
+                self.c_d.logpdf([c, 1 - d, d - c]))
+
+
+def learn_theta(abcds, student_dist, corrects):
     def f(theta):
         theta = theta[0]
-        mult = log(norm(0, 1).pdf(theta))
+        mult = student_dist.logpdf(theta)
         for abcd, correct in zip(abcds, corrects):
             a, b, c, d = abcd
             if correct != 0:
@@ -38,15 +68,12 @@ def learn_theta(abcds, corrects):
     return f
 
 
-def learn_abcd(thetas, corrects):
+def learn_abcd(thetas, question_dist, corrects):
     def f(arg):
         a, b, c, d = arg
         if a <= 0 or c < 0 or d > 1 or d - c < 0:
             return inf
-        mult = log(norm(0, 1).pdf(log(a)))
-        mult += log(norm(0, 1).pdf(b))
-        mult += log(halfnorm(0, 0.1).pdf(c))
-        mult += log(halfnorm(0, 0.1).pdf(1 - d))
+        mult = question_dist.logpdf(a, b, c, d)
         for theta, correct in zip(thetas, corrects):
             p = four_parameter_model(a, b, c, d, theta)
             mult += log1p((2 * p - 1) * correct)
@@ -79,16 +106,16 @@ def parse_optimization_result(res):
     return res['x']
 
 
-def initialize_random_values(students_count, subquestions_count):
-    theta_values = normal(scale=0.01, size=students_count)
-    a_values = exp(normal(scale=0.01, size=subquestions_count))
-    b_values = normal(0.01, size=subquestions_count)
-    c_values = uniform(0., 0.01, size=subquestions_count)
-    d_values = uniform(0.99, 1., size=subquestions_count)
-    return theta_values, array([a_values, b_values, c_values, d_values]).T
+def initialize_random_values(students_count, subquestions_count,
+                             student_dist, question_dist):
+    theta_values = sum(student_dist.rvs(size=(100, students_count)),
+                       axis=0) / 100
+    abcd_values = sum(question_dist.rvs(size=(100, subquestions_count)),
+                      axis=0) / 100
+    return theta_values, abcd_values
 
 
-def initialize_estimation(scores):
+def initialize_estimation(scores, student_dist, question_dist):
     # Even though we usually input the table as scores per student,
     # the analysis is easier for a table of scores per question:
     scores = scores.T
@@ -99,43 +126,49 @@ def initialize_estimation(scores):
                                  for answers in answers_per_question]
     subquestions_count = sum(subquestions_per_question) - questions_count
     thetas, abcds = initialize_random_values(students_count,
-                                             subquestions_count)
+                                             subquestions_count,
+                                             student_dist, question_dist)
     expanded = expanded_scores(scores)
     return expanded, thetas, abcds
     
 
-def student_theta_given_abcd(abcds, scores, inital_theta):
-    to_minimize = learn_theta(abcds, scores)
+def student_theta_given_abcd(abcds, student_dist, scores, inital_theta):
+    to_minimize = learn_theta(abcds, student_dist, scores)
     res = minimize(to_minimize, [inital_theta], method='Nelder-Mead')
     return parse_optimization_result(res)
 
 
-def all_thetas_given_abcd(abcds, scores, thetas):
-    return array([student_theta_given_abcd(abcds, scores[:, i], thetas[i])
+def all_thetas_given_abcd(abcds, student_dist, scores, thetas):
+    return array([student_theta_given_abcd(abcds, student_dist,
+                                           scores[:, i], thetas[i])
                   for i in range(len(thetas))])
 
 
-def question_abcd_given_theta(thetas, scores, initial_abcd):
-    to_minimize = learn_abcd(thetas, scores)
+def question_abcd_given_theta(thetas, question_dist, scores, initial_abcd):
+    to_minimize = learn_abcd(thetas, question_dist, scores)
     res = minimize(to_minimize, initial_abcd, method='Nelder-Mead')
     return parse_optimization_result(res)
 
 
-def all_abcds_given_theta(thetas, scores, abcds):
-    return array([question_abcd_given_theta(thetas, scores[i], abcds[i])
+def all_abcds_given_theta(thetas, question_dist, scores, abcds):
+    return array([question_abcd_given_theta(thetas, question_dist,
+                                            scores[i], abcds[i])
                   for i in range(len(abcds))])
 
 
 def estimate_thetas(scores):
-    expanded, thetas, abcds = initialize_estimation(scores)
+    student_dist = StudentParametersDistribution()
+    question_dist = QuestionParametersDistribution()
+    expanded, thetas, abcds = initialize_estimation(scores, student_dist,
+                                                    question_dist)
     old_abcds, old_thetas = copy(abcds), copy(thetas)
     diff = 1
     small_diffs_streak = 0
     iter_count = 0
     while iter_count < 100 and small_diffs_streak < 3:
         old_abcds, old_thetas = copy(abcds), copy(thetas)
-        abcds = all_abcds_given_theta(thetas, expanded, abcds)
-        thetas = all_thetas_given_abcd(abcds, expanded, thetas)
+        abcds = all_abcds_given_theta(thetas, question_dist, expanded, abcds)
+        thetas = all_thetas_given_abcd(abcds, student_dist, expanded, thetas)
         diff = max([max(abs(old_abcds - abcds)),
                     max(abs(old_thetas - thetas))])
         if diff < 0.001:
