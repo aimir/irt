@@ -36,7 +36,8 @@ class StudentParametersDistribution(object):
 
 
 class QuestionParametersDistribution(object):
-    def __init__(self, a_scale=1.7, b_scale=1., c_d_dirichlet_alpha=(1,1,46)):
+    def __init__(self, a_scale=1.7, b_scale=1.,
+                 c_d_dirichlet_alpha=(1, 1, 46)):
         self.a = lognorm(s=1., scale=a_scale)
         self.b = norm(scale=b_scale)
         self.c_d = dirichlet(alpha=c_d_dirichlet_alpha)
@@ -124,7 +125,7 @@ def initialize_estimation(scores, student_dist, question_dist):
                                              student_dist, question_dist)
     expanded = expanded_scores(scores)
     return expanded, thetas, abcds
-    
+
 
 def parse_optimization_result(res):
     if not res['success'] and res['message'] not in OPTIMIZE_MAX_REACHED_MSG:
