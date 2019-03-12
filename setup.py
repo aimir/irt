@@ -18,5 +18,5 @@ setup(
     author_email = 'aisarid@gmail.com',
     keywords = 'IRT item response theory psychometrics',
     packages = ['irt'],
-    install_requires = ['numpy', 'scipy'],
+    install_requires = ['future', 'numpy', 'scipy'],
 )
