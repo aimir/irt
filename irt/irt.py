@@ -55,19 +55,6 @@ class QuestionParametersDistribution(object):
                 self.c_d.logpdf([c, 1 - d, d - c]))
 
 
-def learn_theta(abcds, student_dist, corrects):
-    def f(theta):
-        theta = theta[0]
-        mult = student_dist.logpdf(theta)
-        for abcd, correct in zip(abcds, corrects):
-            a, b, c, d = abcd
-            if correct != 0:
-                p = four_parameter_model(a, b, c, d, theta)
-                mult += log1p((2 * p - 1) * correct)
-        return -mult
-    return f
-
-
 def learn_abcd(thetas, question_dist, corrects):
     def f(arg):
         a, b, c, d = arg
@@ -77,6 +64,19 @@ def learn_abcd(thetas, question_dist, corrects):
         for theta, correct in zip(thetas, corrects):
             p = four_parameter_model(a, b, c, d, theta)
             mult += log1p((2 * p - 1) * correct)
+        return -mult
+    return f
+
+
+def learn_theta(abcds, student_dist, corrects):
+    def f(theta):
+        theta = theta[0]
+        mult = student_dist.logpdf(theta)
+        for abcd, correct in zip(abcds, corrects):
+            a, b, c, d = abcd
+            if correct != 0:
+                p = four_parameter_model(a, b, c, d, theta)
+                mult += log1p((2 * p - 1) * correct)
         return -mult
     return f
 
@@ -98,12 +98,6 @@ def expanded_scores(score_matrix):
 
         subscores.append(array(subscores_per_student).T)
     return concatenate(subscores)
-
-
-def parse_optimization_result(res):
-    if not res['success'] and res['message'] not in OPTIMIZE_MAX_REACHED_MSG:
-        raise RuntimeError("Optimization failed:\n" + repr(res))
-    return res['x']
 
 
 def initialize_random_values(students_count, subquestions_count,
@@ -132,16 +126,10 @@ def initialize_estimation(scores, student_dist, question_dist):
     return expanded, thetas, abcds
     
 
-def student_theta_given_abcd(abcds, student_dist, scores, inital_theta):
-    to_minimize = learn_theta(abcds, student_dist, scores)
-    res = minimize(to_minimize, [inital_theta], method='Nelder-Mead')
-    return parse_optimization_result(res)
-
-
-def all_thetas_given_abcd(abcds, student_dist, scores, thetas):
-    return array([student_theta_given_abcd(abcds, student_dist,
-                                           scores[:, i], thetas[i])
-                  for i in range(len(thetas))])
+def parse_optimization_result(res):
+    if not res['success'] and res['message'] not in OPTIMIZE_MAX_REACHED_MSG:
+        raise RuntimeError("Optimization failed:\n" + repr(res))
+    return res['x']
 
 
 def question_abcd_given_theta(thetas, question_dist, scores, initial_abcd):
@@ -154,6 +142,18 @@ def all_abcds_given_theta(thetas, question_dist, scores, abcds):
     return array([question_abcd_given_theta(thetas, question_dist,
                                             scores[i], abcds[i])
                   for i in range(len(abcds))])
+
+
+def student_theta_given_abcd(abcds, student_dist, scores, inital_theta):
+    to_minimize = learn_theta(abcds, student_dist, scores)
+    res = minimize(to_minimize, [inital_theta], method='Nelder-Mead')
+    return parse_optimization_result(res)
+
+
+def all_thetas_given_abcd(abcds, student_dist, scores, thetas):
+    return array([student_theta_given_abcd(abcds, student_dist,
+                                           scores[:, i], thetas[i])
+                  for i in range(len(thetas))])
 
 
 def estimate_thetas(scores):
