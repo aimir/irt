@@ -181,15 +181,15 @@ def learn_abcd(thetas, question_dist, corrects):
     def f(arg):
         a, b, c, d = arg
         if a <= 0 or c < 0 or d > 1 or d - c < 0:
-            # invalid parameters - return inf so optimization function
+            # invalid parameters - return inf so minimization function
             # will learn to avoid it
             return inf
         mult = question_dist.logpdf(a, b, c, d)
-        for theta, correct in zip(thetas, corrects):
-            p = four_parameter_model(a, b, c, d, theta)
+        p = four_parameter_model(a, b, c, d, thetas)
+        for i, correct in enumerate(corrects):
             # correct answer is 1, incorrect by -1, no answer is 0
             # multiply by a factor of 2 per student, to utilize log1p
-            mult += log1p((2 * p - 1) * correct)
+            mult += log1p((2 * p[i] - 1) * correct)
         return -mult
     return f
 
@@ -205,12 +205,12 @@ def learn_theta(abcds, student_dist, corrects):
     def f(theta):
         theta = theta[0]
         mult = student_dist.logpdf(theta)
-        for abcd, correct in zip(abcds, corrects):
-            a, b, c, d = abcd
-            p = four_parameter_model(a, b, c, d, theta)
+        a, b, c, d = abcds.T
+        p = four_parameter_model(a, b, c, d, theta)
+        for i, correct in enumerate(corrects):
             # correct answer is 1, incorrect by -1, no answer is 0
             # multiply by a factor of 2 per question, to utilize log1p
-            mult += log1p((2 * p - 1) * correct)
+            mult += log1p((2 * p[i] - 1) * correct)
         return -mult
     return f
 
@@ -310,7 +310,7 @@ def all_thetas_given_abcd(abcds, student_dist, scores, thetas):
                   for i in range(len(thetas))])
 
 
-def estimate_thetas(scores):
+def estimate_thetas(scores, verbose = False):
     """
     Estimates the student theta (ability) and question parameters.
 
@@ -345,5 +345,6 @@ def estimate_thetas(scores):
         else:
             small_diffs_streak = 0
         iter_count += 1
-        print diff
+        if verbose:
+            print(diff)
     return thetas, abcds
