@@ -17,10 +17,113 @@ def scale_guessing(value, c, d):
 
 
 def two_parameter_model(a, b, theta):
-    return expit(a * theta + b)
+    """
+    Estimate the likelihood of ability theta in a 2PL model.
+    
+    Apply the two-parameter logistic model with parameters `a` and `b`
+    to estimate the likelihood of having ability `theta`.
+
+    Parameters
+    ----------
+    a : array_like
+        Item discrimination, determines how sharp the rise in difficulty
+        is, and controls the maximum slope of the probability curve,
+        which is given by a / 4.
+    b : array_like
+        Item difficulty, controls the `theta` value which yields
+        the maximal slope, which is given by ``-b / a``
+    theta: array_like
+        Student ability, the ability which we want to measure likelihood
+        for.
+
+    Returns
+    -------
+    p : array_like
+        The probability of the given `theta` in the 2PL model
+
+    Notes
+    -----
+    The 2PL likelihood function is given here by
+    ``LOGISTIC(a * x + b)``.
+    This is a slightly different parametrization than what is given in
+    most of the literature, which is ``LOGISTIC(a * (x - b))``.
+    Here, ``LOGISTIC(x) = 1 / (1 + exp(-x))``.
+
+    I've seen this different parametrization being referred to, in
+    various sources, as ``(a*, b*)``, and also as ``(theta, lambda)``.
+    Here the notation of ``(a, b)`` is kept for simplicity, despite the
+    different meaning, as this parametrization is essentially equivalent
+    and is better suited for faster and more stable convergence.
+
+    If all inputs are numbers, then the returned result is the number
+    represnting the probability. If they are all arrays of the same
+    shape, then the an array is returned, with a single entry
+    corresponding to every ``(a, b, theta)`` entry in the input.
+    If `a` and `b` are numbers but `theta` is an array, the probability
+    is calculated for each theta, using the constant `a` and `b` given.
+    
+    """
+    return expit(a * theta + array(b))
 
 
 def four_parameter_model(a, b, c, d, theta):
+    """
+    Estimate the likelihood of ability theta in a 4PL model.
+    
+    Apply the four-parameter logistic model with parameters `a`, `b`,
+    `c` and `d` to estimate the likelihood of having ability `theta`.
+
+    Parameters
+    ----------
+    a : array_like
+        Item discrimination, determines how sharp the rise in difficulty
+        is, and controls the maximum slope of the probability curve,
+        which is given by a (d - c) / 4.
+    b : array_like
+        Item difficulty, controls the `theta` value which yields
+        the maximal slope, which is given by ``-b / a``
+    theta: array_like
+    c : array_like
+        The pseudo-guessing probability, the minimal chance of success
+        when the ability decreases to negative infinity.
+    d : array_like
+        One minus the inattention probability, or alternatively the
+        maximal chance of success when the ability increases to positive
+        infinity.
+    theta: array_like
+        Student ability, the ability which we want to measure likelihood
+        for.
+
+    Returns
+    -------
+    p : array_like
+        The probability of the given `theta` in the 4PL model
+
+    Notes
+    -----
+    The 4PL likelihood function is given here by
+    ``c + (d - c) * LOGISTIC(a * x + b)``.
+    This is a slightly different parametrization than what is given in
+    most of the literature, which is
+    ``c + (d - c) * LOGISTIC(a * (x - b))``.
+    Here, ``LOGISTIC(x) = 1 / (1 + exp(-x))``.
+
+    I've seen this different parametrization being referred to, in
+    various sources, as ``(a*, b*, c, d)``, and also as
+    ``(theta, lambda, c, d)``. Here the notation of ``(a, b, c, d)`` is
+    kept for simplicity, despite the different meaning, as this
+    parametrization is essentially equivalent and is better suited for
+    faster and more stable convergence.
+
+    If all inputs are numbers, then the returned result is the number
+    represnting the probability. If they are all arrays of the same
+    shape, then the an array is returned, with a single entry
+    corresponding to every ``(a, b, c, d, theta)`` entry in the input.
+    If `a`, `b`, `c` and `d` are numbers but `theta` is an array, the
+    probability  is calculated for each theta, using the constant `a`,
+    `b`, `c` and `d` given.
+    
+    """
     return scale_guessing(two_parameter_model(a, b, theta), c, d)
 
 
@@ -37,7 +140,7 @@ class StudentParametersDistribution(object):
 
 class QuestionParametersDistribution(object):
     def __init__(self, a_scale=1.7, b_scale=1.,
-                 c_d_dirichlet_alpha=(1, 1, 46)):
+                 c_d_dirichlet_alpha=(5, 5, 46)):
         self.a = lognorm(s=1., scale=a_scale)
         self.b = norm(scale=b_scale)
         self.c_d = dirichlet(alpha=c_d_dirichlet_alpha)
@@ -115,14 +218,17 @@ def initialize_estimation(scores, student_dist, question_dist):
     # the analysis is easier for a table of scores per question:
     scores = scores.T
     questions_count, students_count = scores.shape
+    # Split each question into small sub-question
     answers_per_question = [sort(array(list(set(score))))
                             for score in scores]
     subquestions_per_question = [len(answers)
                                  for answers in answers_per_question]
     subquestions_count = sum(subquestions_per_question) - questions_count
+    # Begin with small random values per parameter for symmetry breaking
     thetas, abcds = initialize_random_values(students_count,
                                              subquestions_count,
                                              student_dist, question_dist)
+    # modify the question array according to those new sub-questions
     expanded = expanded_scores(scores)
     return expanded, thetas, abcds
 
@@ -158,6 +264,21 @@ def all_thetas_given_abcd(abcds, student_dist, scores, thetas):
 
 
 def estimate_thetas(scores):
+    """
+    Estimates the student theta (ability) and question parameters.
+
+    Currently uses JMLE to simultaneously estimate the parameters for
+    students and for questions.
+
+    Parameters
+    ----------
+    scores : array_like
+        A 2-dimensional array of question scores, where each row
+        corresponds to a single student. Grades should be integers but
+        their scale can be arbitrary (supports partial credit, not only
+        0 and 1).
+    
+    """
     student_dist = StudentParametersDistribution()
     question_dist = QuestionParametersDistribution()
     expanded, thetas, abcds = initialize_estimation(scores, student_dist,
@@ -177,4 +298,5 @@ def estimate_thetas(scores):
         else:
             small_diffs_streak = 0
         iter_count += 1
+        print diff
     return thetas, abcds
