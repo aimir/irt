@@ -14,7 +14,7 @@ THETA_SCALE = 1.
 A_SCALE = 1.7
 # The standard deviation of b (item difficulty)
 B_SCALE = 1.
-# the alpha parameter for the dirichlet distribution from which c and d
+# the alpha parameter for the Dirichlet distribution from which c and d
 # are generated - the tuple returned is (pseudo-guessing probability,
 # inattention probability, 1 - the sum of both those probabilities)
 C_D_DIRICHLET_ALPHA = (5, 5, 46)
@@ -88,7 +88,7 @@ def two_parameter_model(a, b, theta):
     and is better suited for faster and more stable convergence.
 
     If all inputs are numbers, then the returned result is the number
-    represnting the probability. If they are all arrays of the same
+    representing the probability. If they are all arrays of the same
     shape, then the an array is returned, with a single entry
     corresponding to every ``(a, b, theta)`` entry in the input.
     If `a` and `b` are numbers but `theta` is an array, the probability
@@ -148,7 +148,7 @@ def four_parameter_model(a, b, c, d, theta):
     faster and more stable convergence.
 
     If all inputs are numbers, then the returned result is the number
-    represnting the probability. If they are all arrays of the same
+    representing the probability. If they are all arrays of the same
     shape, then the an array is returned, with a single entry
     corresponding to every ``(a, b, c, d, theta)`` entry in the input.
     If `a`, `b`, `c` and `d` are numbers but `theta` is an array, the
