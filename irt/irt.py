@@ -38,6 +38,7 @@ MAX_ITER = 100
 DIFF = 0.001
 SMALL_DIFF_STREAK = 3
 
+
 def scale_guessing(value, c, d):
     """
     scale 2PL probability to fit the 4PL model.
@@ -338,7 +339,7 @@ def all_thetas_given_abcd(abcds, student_dist, scores, thetas):
                   for i in range(len(thetas))])
 
 
-def estimate_thetas(scores, verbose = False):
+def estimate_thetas(scores, verbose=False):
     """
     Estimates the student theta (ability) and question parameters.
 
