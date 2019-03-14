@@ -7,10 +7,36 @@ from scipy.special import expit
 
 __all__ = ['two_parameter_model', 'four_parameter_model', 'estimate_thetas']
 
+# Scale parameters for the a-priory distribution of parameters -
+# The standard deviation of theta (student ability)
+THETA_SCALE = 1.
+# The standard deviation of log(a) (item discrimination)
+A_SCALE = 1.7
+# The standard deviation of b (item difficulty)
+B_SCALE = 1.
+# the alpha parameter for the dirichlet distribution from which c and d
+# are generated - the tuple returned is (pseudo-guessing probability,
+# inattention probability, 1 - the sum of both those probabilities)
+C_D_DIRICHLET_ALPHA = (5, 5, 46)
+
+# Parameters are initialized as the avg. of a large number of parameters
+# which are randomly generated, how large should this number be?
+INITIAL_PARAMETER_AVG = 100
+
+# When scipy.optimize minimization fails with these messages, we can
+# expect the result reached to still be pretty good
 OPTIMIZE_MAX_REACHED_MSG = ['Maximum number of iterations has been exceeded.',
                             'Maximum number of function evaluations '
                             'has been exceeded.']
+# Method parameter for scipy.optimize.minimize
+MINIMIZATION_METHOD = 'Nelder-Mead'
 
+# Bound on the number of MLE iterations
+MAX_ITER = 100
+# If no parameters has changed by more than DIFF in the last SMALL_DIFF_STREAK
+# iterations, then we terminate the optimization process
+DIFF = 0.001
+SMALL_DIFF_STREAK = 3
 
 def scale_guessing(value, c, d):
     """
@@ -137,7 +163,7 @@ class StudentParametersDistribution(object):
     """
     An object for generation and calculation of student parameters.
     """
-    def __init__(self, theta_scale=1.):
+    def __init__(self, theta_scale=THETA_SCALE):
         self.theta = norm(loc=0., scale=theta_scale)
 
     def rvs(self, size=None):
@@ -151,8 +177,8 @@ class QuestionParametersDistribution(object):
     """
     An object for generation and calculation of question parameters.
     """
-    def __init__(self, a_scale=1.7, b_scale=1.,
-                 c_d_dirichlet_alpha=(5, 5, 46)):
+    def __init__(self, a_scale=A_SCALE, b_scale=B_SCALE,
+                 c_d_dirichlet_alpha=C_D_DIRICHLET_ALPHA):
         self.a = lognorm(s=1., scale=a_scale)
         self.b = norm(scale=b_scale)
         self.c_d = dirichlet(alpha=c_d_dirichlet_alpha)
@@ -233,10 +259,12 @@ def expanded_scores(score_matrix):
 
 def initialize_random_values(students_count, subquestions_count,
                              student_dist, question_dist):
-    theta_values = sum(student_dist.rvs(size=(100, students_count)),
-                       axis=0) / 100
-    abcd_values = sum(question_dist.rvs(size=(100, subquestions_count)),
-                      axis=0) / 100
+    theta_values = sum(student_dist.rvs(size=(INITIAL_PARAMETER_AVG,
+                                              students_count)),
+                       axis=0) / INITIAL_PARAMETER_AVG
+    abcd_values = sum(question_dist.rvs(size=(INITIAL_PARAMETER_AVG,
+                                              subquestions_count)),
+                      axis=0) / INITIAL_PARAMETER_AVG
     return theta_values, abcd_values
 
 
@@ -276,7 +304,7 @@ def question_abcd_given_theta(thetas, question_dist, scores, initial_abcd):
     and answers of all students, for a single question
     """
     to_minimize = learn_abcd(thetas, question_dist, scores)
-    res = minimize(to_minimize, initial_abcd, method='Nelder-Mead')
+    res = minimize(to_minimize, initial_abcd, method=MINIMIZATION_METHOD)
     return parse_optimization_result(res)
 
 
@@ -296,7 +324,7 @@ def student_theta_given_abcd(abcds, student_dist, scores, inital_theta):
     given his answers and the parameters of the questions
     """
     to_minimize = learn_theta(abcds, student_dist, scores)
-    res = minimize(to_minimize, [inital_theta], method='Nelder-Mead')
+    res = minimize(to_minimize, [inital_theta], method=MINIMIZATION_METHOD)
     return parse_optimization_result(res)
 
 
@@ -330,17 +358,16 @@ def estimate_thetas(scores, verbose = False):
     question_dist = QuestionParametersDistribution()
     expanded, thetas, abcds = initialize_estimation(scores, student_dist,
                                                     question_dist)
-    diff = 1
     small_diffs_streak = 0
     iter_count = 0
-    while iter_count < 100 and small_diffs_streak < 3:
+    while iter_count < MAX_ITER and small_diffs_streak < SMALL_DIFF_STREAK:
         old_abcds, old_thetas = copy(abcds), copy(thetas)
         abcds = all_abcds_given_theta(thetas, question_dist, expanded, abcds)
         thetas = all_thetas_given_abcd(abcds, student_dist, expanded, thetas)
         # How much have the parameters changed from last time?
         diff = max([max(abs(old_abcds - abcds)),
                     max(abs(old_thetas - thetas))])
-        if diff < 0.001:
+        if diff < DIFF:
             small_diffs_streak += 1
         else:
             small_diffs_streak = 0
