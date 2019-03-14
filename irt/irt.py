@@ -218,18 +218,15 @@ def learn_theta(abcds, student_dist, corrects):
 def expanded_scores(score_matrix):
     answers = [list(set(score)) for score in score_matrix]
     subscores = []
-
     for i, question_scores in enumerate(score_matrix):
         best = len(answers[i])
         subscores_per_student = []
-
         for student_score in question_scores:
             expanded = [1] * answers[i].index(student_score)
             if len(expanded) < best - 1:
                 expanded = expanded + [-1]
                 expanded = expanded + [0] * (best - 1 - len(expanded))
             subscores_per_student.append(expanded)
-
         subscores.append(array(subscores_per_student).T)
     return concatenate(subscores)
 
