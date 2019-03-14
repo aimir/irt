@@ -271,24 +271,40 @@ def parse_optimization_result(res):
 
 
 def question_abcd_given_theta(thetas, question_dist, scores, initial_abcd):
+    """
+    find the maximal-likelihood question parameters, given the ability
+    and answers of all students, for a single question
+    """
     to_minimize = learn_abcd(thetas, question_dist, scores)
     res = minimize(to_minimize, initial_abcd, method='Nelder-Mead')
     return parse_optimization_result(res)
 
 
 def all_abcds_given_theta(thetas, question_dist, scores, abcds):
+    """
+    find the maximal-likelihood question parameters, given the ability
+    and answers of all students, for all questions question
+    """
     return array([question_abcd_given_theta(thetas, question_dist,
                                             scores[i], abcds[i])
                   for i in range(len(abcds))])
 
 
 def student_theta_given_abcd(abcds, student_dist, scores, inital_theta):
+    """
+    find the maximal-likelihood ability parameter of a single student,
+    given his answers and the parameters of the questions
+    """
     to_minimize = learn_theta(abcds, student_dist, scores)
     res = minimize(to_minimize, [inital_theta], method='Nelder-Mead')
     return parse_optimization_result(res)
 
 
 def all_thetas_given_abcd(abcds, student_dist, scores, thetas):
+    """
+    find the maximal-likelihood ability parameter of a all students,
+    given their answers and the parameters of the questions
+    """
     return array([student_theta_given_abcd(abcds, student_dist,
                                            scores[:, i], thetas[i])
                   for i in range(len(thetas))])
