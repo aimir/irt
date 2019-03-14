@@ -177,5 +177,4 @@ def estimate_thetas(scores):
         else:
             small_diffs_streak = 0
         iter_count += 1
-        print diff
     return thetas, abcds
