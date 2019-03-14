@@ -13,6 +13,12 @@ OPTIMIZE_MAX_REACHED_MSG = ['Maximum number of iterations has been exceeded.',
 
 
 def scale_guessing(value, c, d):
+    """
+    scale 2PL probability to fit the 4PL model.
+
+    Accounts for the pseudo-guessing and inattention parameters given
+    by `c` and `d`.
+    """
     return c + (d - c) * value
 
 
@@ -128,6 +134,9 @@ def four_parameter_model(a, b, c, d, theta):
 
 
 class StudentParametersDistribution(object):
+    """
+    An object for generation and calculation of student parameters.
+    """
     def __init__(self, theta_scale=1.):
         self.theta = norm(loc=0., scale=theta_scale)
 
@@ -139,6 +148,9 @@ class StudentParametersDistribution(object):
 
 
 class QuestionParametersDistribution(object):
+    """
+    An object for generation and calculation of question parameters.
+    """
     def __init__(self, a_scale=1.7, b_scale=1.,
                  c_d_dirichlet_alpha=(5, 5, 46)):
         self.a = lognorm(s=1., scale=a_scale)
@@ -160,27 +172,45 @@ class QuestionParametersDistribution(object):
 
 
 def learn_abcd(thetas, question_dist, corrects):
+    """
+    Returns a function that can calculate the log-likelihood of question
+    parameters given thetas and answers of different students.
+
+    Returns an estimation function suitable for optimization.
+    """
     def f(arg):
         a, b, c, d = arg
         if a <= 0 or c < 0 or d > 1 or d - c < 0:
+            # invalid parameters - return inf so optimization function
+            # will learn to avoid it
             return inf
         mult = question_dist.logpdf(a, b, c, d)
         for theta, correct in zip(thetas, corrects):
             p = four_parameter_model(a, b, c, d, theta)
+            # correct answer is 1, incorrect by -1, no answer is 0
+            # multiply by a factor of 2 per student, to utilize log1p
             mult += log1p((2 * p - 1) * correct)
         return -mult
     return f
 
 
 def learn_theta(abcds, student_dist, corrects):
+    """
+    Returns a function that can calculate the log-likelihood of student
+    parameters given question parameters and answers of different
+    students.
+
+    Returns an estimation function suitable for optimization.
+    """
     def f(theta):
         theta = theta[0]
         mult = student_dist.logpdf(theta)
         for abcd, correct in zip(abcds, corrects):
             a, b, c, d = abcd
-            if correct != 0:
-                p = four_parameter_model(a, b, c, d, theta)
-                mult += log1p((2 * p - 1) * correct)
+            p = four_parameter_model(a, b, c, d, theta)
+            # correct answer is 1, incorrect by -1, no answer is 0
+            # multiply by a factor of 2 per question, to utilize log1p
+            mult += log1p((2 * p - 1) * correct)
         return -mult
     return f
 
@@ -218,22 +248,26 @@ def initialize_estimation(scores, student_dist, question_dist):
     # the analysis is easier for a table of scores per question:
     scores = scores.T
     questions_count, students_count = scores.shape
-    # Split each question into small sub-question
+    # Split each question into small sub-question.
     answers_per_question = [sort(array(list(set(score))))
                             for score in scores]
     subquestions_per_question = [len(answers)
                                  for answers in answers_per_question]
     subquestions_count = sum(subquestions_per_question) - questions_count
-    # Begin with small random values per parameter for symmetry breaking
+    # Begin with small random values per parameter to break symmetry.
     thetas, abcds = initialize_random_values(students_count,
                                              subquestions_count,
                                              student_dist, question_dist)
-    # modify the question array according to those new sub-questions
+    # Modify the question array according to those new sub-questions.
     expanded = expanded_scores(scores)
     return expanded, thetas, abcds
 
 
 def parse_optimization_result(res):
+    """
+    Modify the dictionary returned by scipy.optimize.minimize to get the
+    actual optimal value of `x` obtained by the minimization process.
+    """
     if not res['success'] and res['message'] not in OPTIMIZE_MAX_REACHED_MSG:
         raise RuntimeError("Optimization failed:\n" + repr(res))
     return res['x']
@@ -283,7 +317,6 @@ def estimate_thetas(scores):
     question_dist = QuestionParametersDistribution()
     expanded, thetas, abcds = initialize_estimation(scores, student_dist,
                                                     question_dist)
-    old_abcds, old_thetas = copy(abcds), copy(thetas)
     diff = 1
     small_diffs_streak = 0
     iter_count = 0
@@ -291,6 +324,7 @@ def estimate_thetas(scores):
         old_abcds, old_thetas = copy(abcds), copy(thetas)
         abcds = all_abcds_given_theta(thetas, question_dist, expanded, abcds)
         thetas = all_thetas_given_abcd(abcds, student_dist, expanded, thetas)
+        # How much have the parameters changed from last time?
         diff = max([max(abs(old_abcds - abcds)),
                     max(abs(old_thetas - thetas))])
         if diff < 0.001:
