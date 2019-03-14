@@ -19,7 +19,7 @@ def scale_guessing(value, c, d):
 def two_parameter_model(a, b, theta):
     """
     Estimate the likelihood of ability theta in a 2PL model.
-    
+
     Apply the two-parameter logistic model with parameters `a` and `b`
     to estimate the likelihood of having ability `theta`.
 
@@ -61,7 +61,7 @@ def two_parameter_model(a, b, theta):
     corresponding to every ``(a, b, theta)`` entry in the input.
     If `a` and `b` are numbers but `theta` is an array, the probability
     is calculated for each theta, using the constant `a` and `b` given.
-    
+
     """
     return expit(a * theta + array(b))
 
@@ -69,7 +69,7 @@ def two_parameter_model(a, b, theta):
 def four_parameter_model(a, b, c, d, theta):
     """
     Estimate the likelihood of ability theta in a 4PL model.
-    
+
     Apply the four-parameter logistic model with parameters `a`, `b`,
     `c` and `d` to estimate the likelihood of having ability `theta`.
 
@@ -122,7 +122,7 @@ def four_parameter_model(a, b, c, d, theta):
     If `a`, `b`, `c` and `d` are numbers but `theta` is an array, the
     probability  is calculated for each theta, using the constant `a`,
     `b`, `c` and `d` given.
-    
+
     """
     return scale_guessing(two_parameter_model(a, b, theta), c, d)
 
@@ -277,7 +277,7 @@ def estimate_thetas(scores):
         corresponds to a single student. Grades should be integers but
         their scale can be arbitrary (supports partial credit, not only
         0 and 1).
-    
+
     """
     student_dist = StudentParametersDistribution()
     question_dist = QuestionParametersDistribution()
